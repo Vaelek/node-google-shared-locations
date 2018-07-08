@@ -8,7 +8,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git://github.com/Vaelek/google-shared-locations.git"
+        "url": "git://github.com/Vaelek/node-google-shared-locations.git"
     },
     "keywords": [
         "google",
@@ -19,7 +19,7 @@
     "author": "jim@vaelek.com",
     "license": "MIT",
     "bugs": {
-        "url": "https://github.com/Vaelek/google-shared-locations/issues"
+        "url": "https://github.com/Vaelek/node-google-shared-locations/issues"
     },
     "readme": "README.md",
     "dependencies": {
