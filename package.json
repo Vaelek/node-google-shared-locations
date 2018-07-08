@@ -1,0 +1,29 @@
+{
+    "name": "google-location-sharing",
+    "version": "1.0.0",
+    "description": "Node.js module for Google location sharing",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/Vaelek/google-shared-locations.git"
+    },
+    "keywords": [
+        "google",
+        "lattitude",
+        "location",
+        "gps"
+    ],
+    "author": "jim@vaelek.com",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/Vaelek/google-shared-locations/issues"
+    },
+    "readme": "README.md",
+    "dependencies": {
+        "cheerio": "^1.0.0-rc.2",
+        "request": "^2.87.0"
+    }
+}
