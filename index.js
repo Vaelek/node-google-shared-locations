@@ -14,25 +14,25 @@ module.exports = {
 
     async authenticate() {
         this.AUTHENTICATED = true;
-        console.log('Authenticating');
-        console.log('connectFirstStage');
+        // console.log('Authenticating');
+        // console.log('connectFirstStage');
         const googleEmailForm = await connectFirstStage(savedCookies);
         googleEmailForm['Email'] = this.credentials.username;
-        console.log('connectSecondStage')
+        // console.log('connectSecondStage')
         const googlePasswordForm = await connectSecondStage(savedCookies, googleEmailForm);
         googlePasswordForm['Passwd'] = this.credentials.password;
-        console.log('connectThirdStage')
+        // console.log('connectThirdStage')
         await connectThirdStage(savedCookies, googlePasswordForm);
         return 'ok';
     },
 
     async getLocations() {
         if (!this.AUTHENTICATED) {
-            console.log('Not authenticated yet');
+            // console.log('Not authenticated yet');
             await this.authenticate();
         }
 
-        console.log('getting locations');
+        // console.log('getting locations');
         const users = await getSharedLocations(savedCookies);
         return users;
 
