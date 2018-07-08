@@ -14,7 +14,7 @@ or
 ## Sample Usage
 
 ```js
-const GoogleSharedLocations = require('/google-shared-locations');
+const GoogleSharedLocations = require('google-shared-locations');
 
 GoogleSharedLocations.credentials = {
     username: 'YourEmail@gmail.com',
