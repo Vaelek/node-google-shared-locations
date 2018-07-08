@@ -57,3 +57,6 @@ GoogleSharedLocations.getLocations()
     } 
 ]
 ```
+
+### Note
+On first run, a full login will be performed to establish the cookie. After this, subsequent calls to getLocations() will use the cookie.
