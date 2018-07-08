@@ -32,7 +32,7 @@ GoogleSharedLocations.getLocations()
 ```
 
 ### Example Return Data
-```js
+```
 [ 
     { 
         id: '5481211564887755445',
