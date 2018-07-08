@@ -5,16 +5,16 @@ Google Shared Locations provides a NodeJS interface to reading location informat
 Based on https://github.com/t4qjXH8N/ioBroker.google-sharedlocation
 
 ## Installation
-```npm install google-shared-locations```
+```npm install google-location-sharing```
 
 or
 
-```yarn add google-shared-locations```
+```yarn add google-location-sharing```
 
 ## Sample Usage
 
 ```js
-const GoogleSharedLocations = require('google-shared-locations');
+const GoogleSharedLocations = require('google-location-sharing');
 
 GoogleSharedLocations.credentials = {
     username: 'YourEmail@gmail.com',
