@@ -1,5 +1,5 @@
-const request = require('request')
-const cheerio = require('cheerio')
+const request = require('request');
+const cheerio = require('cheerio');
 
 const savedCookies = {
     'google.com': {}
@@ -7,35 +7,46 @@ const savedCookies = {
 
 module.exports = {
     AUTHENTICATED: false,
-    credentials : {
-        username: 'someuser1234@gmail.com',
-        password: 'somepassword'
+    credentials: {
+        username: '',
+        password: ''
     },
 
     async authenticate() {
-        this.AUTHENTICATED = true;
-        // console.log('Authenticating');
-        // console.log('connectFirstStage');
-        const googleEmailForm = await connectFirstStage(savedCookies);
-        googleEmailForm['Email'] = this.credentials.username;
-        // console.log('connectSecondStage')
-        const googlePasswordForm = await connectSecondStage(savedCookies, googleEmailForm);
-        googlePasswordForm['Passwd'] = this.credentials.password;
-        // console.log('connectThirdStage')
-        await connectThirdStage(savedCookies, googlePasswordForm);
-        return 'ok';
+        return new Promise((resolve, reject) => {
+            if (this.AUTHENTICATED) resolve(true);
+            connectFirstStage(savedCookies).catch(firstStageError => {
+                console.warn('If logins are being blocked, try to allow it here: https://accounts.google.com/b/0/DisplayUnlockCaptcha');
+                reject(firstStageError);
+            }).then(googleEmailForm => {
+                googleEmailForm['Email'] = this.credentials.username;
+                return connectSecondStage(savedCookies, googleEmailForm);
+            }).then(googlePasswordForm => {
+                googlePasswordForm['Passwd'] = this.credentials.password;
+                return connectThirdStage(savedCookies, googlePasswordForm);
+            }).then(redirection => {
+                return connectFourthStage(redirection);
+            }).then(() => {
+                this.AUTHENTICATED = true;
+                resolve(true);
+            }).catch(failure => {
+                console.error('Authentification to Google failed.');
+                reject(failure);
+            });
+        });
     },
 
     async getLocations() {
-        if (!this.AUTHENTICATED) {
-            // console.log('Not authenticated yet');
-            await this.authenticate();
-        }
-
-        // console.log('getting locations');
-        const users = await getSharedLocations(savedCookies);
-        return users;
-
+        return new Promise((resolve, reject) => {
+            this.authenticate().then(() => {
+                return getSharedLocations(savedCookies);
+            }).then(data => {
+                resolve(data);
+            }).catch(failure => {
+                console.error('I can not get a locations.');
+                reject(failure);
+            });
+        });
     }
 }
 
@@ -69,11 +80,6 @@ function setCookie(savedCookies, cookies, domain) {
  * What we get here:
  * - GAPS cookie
  * - glx form identifier
- * 
- * If logins are being blocked, navigate to the following link and click allow
- * just before triggering the script.
- * 
- * https://accounts.google.com/b/0/DisplayUnlockCaptcha
  */
 function connectFirstStage(savedCookies) {
     return new Promise((resolve, reject) => {
@@ -93,23 +99,19 @@ function connectFirstStage(savedCookies) {
             }
         }, function (err, response, body) {
             if (err || !response) {
-                // no connection
                 reject(err);
             } else {
-                // connection successful
-                // connection established but something went wrong
                 if (response.statusCode !== 200) {
+                    // connection established but something went wrong
                     reject(err);
                 } else {
-                    // save cookies etc.
                     if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
                         setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
                     } else {
                         reject(new Error('Google Authentication Stage 1 no Set-Cookie header'))
                     }
-                    // first simply get all form fields
+                    // get all form fields
                     const $ = cheerio.load(response.body);
-                    // console.log($.text().replace(/^\s+\n+/gm, '').replace(/Privacy[\w\W]+$/, ''));
                     const error = $('.error-msg').text().trim();
                     if (error) {
                         reject(new Error(error));
@@ -126,8 +128,8 @@ function connectFirstStage(savedCookies) {
 }
 
 /**
- * We have the GAPS cookie and the glx identifier,
- * Start username nad password challenge now.
+ * We have the Google email form
+ * Now check for signin form with password
  */
 function connectSecondStage(savedCookies, googleEmailForm) {
     return new Promise((resolve, reject) => {
@@ -142,19 +144,15 @@ function connectSecondStage(savedCookies, googleEmailForm) {
             form: googleEmailForm
         }, function (err, response, body) {
             if (err || !response) {
-                // no connection
                 reject(err);
             } else {
-                // connection successful
-                // save cookies etc.
                 if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
                     setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
                 } else {
                     reject(new Error('Google Authentication Stage 2 no Set-Cookie header'))
                 }
-                // first simply get all form fields
+                // get all form fields
                 const $ = cheerio.load(response.body);
-                // console.log($.text().replace(/^\s+\n+/gm, '').replace(/Privacy[\w\W]+$/, ''));
                 const error = $('.error-msg').text().trim();
                 if (error) {
                     reject(new Error(error));
@@ -186,14 +184,46 @@ function connectThirdStage(savedCookies, googlePasswordForm) {
             form: googlePasswordForm
         }, function (err, response, body) {
             if (err || !response) {
-                // no connection
                 reject(err);
             } else {
-                // connection successful
-                // save cookies etc.
                 const $ = cheerio.load(response.body);
-                // console.log($.text().replace(/^\s+\n+/gm, '').replace(/Privacy[\w\W]+$/, ''));
-                // console.log(response.headers);
+                const error = $('.error-msg').text().trim();
+                if (error) {
+                    reject(new Error(error));
+                }
+                if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
+                    setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
+                } else {
+                    // Possible 2FA
+                    // Wait for access and tray to continue?
+                    reject(new Error('Google Authentication Stage 3 no Set-Cookie header'))
+                }
+                resolve('');
+            }
+        });
+    });
+}
+
+
+function connectFourthStage(redirection) {
+    console.log(redirection, 'redirection');
+    return new Promise((resolve, reject) => {
+        if (redirection === '') {
+            resolve();
+        }
+        request({
+            url: redirection,
+            headers: {
+                "Cookie": getCookie(savedCookies, 'google.com'),
+                "Referer": "https://accounts.google.com/signin/challenge/sl/password",
+                "Origin": "https://accounts.google.com"
+            },
+            method: "GET"
+        }, function (err, response, body) {
+            if (err || !response) {
+                reject(err);
+            } else {
+                const $ = cheerio.load(response.body);
                 const error = $('.error-msg').text().trim();
                 if (error) {
                     reject(new Error(error));
@@ -225,14 +255,12 @@ function getSharedLocations(savedCookies) {
             if (err || !response) {
                 reject(err);
             } else {
-                // connection successful
-                // connection established but auth failure
                 if (response.statusCode !== 200) {
+                    // connection established but auth failure
                     reject(new Error(`locationsharing responded with HTTP Status ${response.statusCode}`));
                 } else {
                     // Parse and save user locations
                     const locationdata = JSON.parse(body.split('\n').slice(1, -1).join(''));
-                    // debugger
                     // Shared location data is contained in the first element
                     const perlocarr = locationdata[0] || [];
                     const users = perlocarr.map(data => ({
@@ -240,19 +268,15 @@ function getSharedLocations(savedCookies) {
                         "photoURL": data[0][1],
                         "name": data[0][3],
                         "lat": data[1] && data[1][1][2],
-                        "latitude": data[1] && data[1][1][2],
                         "lng": data[1] && data[1][1][1],
-                        "long": data[1] && data[1][1][1],
-                        "longitude": data[1] && data[1][1][1],
                         "locationname": data[1] && data[1][4],
                         "shortname": data[6] && data[6][3],
                         "lastupdateepoch": data[1] && data[1][2],
-                        "lastupdate": data[1] && new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0,10)))
+                        "lastupdate": data[1] && new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0, 10)))
                     }));
-                    // console.log(users)
                     if (users.length > 0)
                         resolve(users);
-                    else 
+                    else
                         reject('No results');
                 }
             }

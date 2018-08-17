@@ -1,0 +1,7 @@
+node_modules
+coverage
+.vscode
+.idea
+.history
+npm-debug.log
+package-lock.json
