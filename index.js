@@ -14,10 +14,13 @@ module.exports = {
 
     async authenticate() {
         return new Promise((resolve, reject) => {
-            if (this.AUTHENTICATED) resolve(true);
+            if (this.AUTHENTICATED) {
+                return resolve(true); // return to skip connection stages
+            }
             connectFirstStage(savedCookies).catch(firstStageError => {
                 console.warn('If logins are being blocked, try to allow it here: https://accounts.google.com/b/0/DisplayUnlockCaptcha');
                 reject(firstStageError);
+                throw new Error(firstStageError); // throw to skip next stages
             }).then(googleEmailForm => {
                 googleEmailForm['Email'] = this.credentials.username;
                 return connectSecondStage(savedCookies, googleEmailForm);
@@ -43,7 +46,6 @@ module.exports = {
             }).then(data => {
                 resolve(data);
             }).catch(failure => {
-                console.error('I can not get a locations.');
                 reject(failure);
             });
         });
@@ -99,30 +101,28 @@ function connectFirstStage(savedCookies) {
             }
         }, function (err, response, body) {
             if (err || !response) {
-                reject(err);
-            } else {
-                if (response.statusCode !== 200) {
-                    // connection established but something went wrong
-                    reject(err);
-                } else {
-                    if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                        setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
-                    } else {
-                        reject(new Error('Google Authentication Stage 1 no Set-Cookie header'))
-                    }
-                    // get all form fields
-                    const $ = cheerio.load(response.body);
-                    const error = $('.error-msg').text().trim();
-                    if (error) {
-                        reject(new Error(error));
-                    }
-                    const googleEmailForm = $("form").serializeArray()
-                        .reduce((r, x) => Object.assign({}, r, {
-                            [x.name]: x.value,
-                        }), {});
-                    resolve(googleEmailForm);
-                }
+                return reject(new Error('Stage 1 response error: ' + err));
             }
+            if (response.statusCode !== 200) {
+                // connection established but something went wrong
+                return reject(new Error('Stage 1 response status error: HTTP Status ' + response.statusCode));
+            }
+            if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
+                setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
+            } else {
+                return reject(new Error('Stage 1 no Set-Cookie header'));
+            }
+            // get all form fields
+            const $ = cheerio.load(response.body);
+            const error = $('.error-msg').text().trim();
+            if (error) {
+                return reject(new Error('Stage 1 data error: ' + error));
+            }
+            const googleEmailForm = $("form").serializeArray()
+                .reduce((r, x) => Object.assign({}, r, {
+                    [x.name]: x.value,
+                }), {});
+            resolve(googleEmailForm);
         });
     });
 }
@@ -144,25 +144,24 @@ function connectSecondStage(savedCookies, googleEmailForm) {
             form: googleEmailForm
         }, function (err, response, body) {
             if (err || !response) {
-                reject(err);
-            } else {
-                if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                    setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
-                } else {
-                    reject(new Error('Google Authentication Stage 2 no Set-Cookie header'))
-                }
-                // get all form fields
-                const $ = cheerio.load(response.body);
-                const error = $('.error-msg').text().trim();
-                if (error) {
-                    reject(new Error(error));
-                }
-                const googlePasswordForm = $("form").serializeArray()
-                    .reduce((r, x) => Object.assign({}, r, {
-                        [x.name]: x.value,
-                    }), {});
-                resolve(googlePasswordForm);
+                return reject(new Error('Stage 2 response error: ' + err));
             }
+            if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
+                setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
+            } else {
+                return reject(new Error('Stage 2 no Set-Cookie header'))
+            }
+            // get all form fields
+            const $ = cheerio.load(response.body);
+            const error = $('.error-msg').text().trim();
+            if (error) {
+                return reject(new Error('Stage 2 data error: ' + error));
+            }
+            const googlePasswordForm = $("form").serializeArray()
+                .reduce((r, x) => Object.assign({}, r, {
+                    [x.name]: x.value,
+                }), {});
+            resolve(googlePasswordForm);
         });
     });
 }
@@ -184,22 +183,21 @@ function connectThirdStage(savedCookies, googlePasswordForm) {
             form: googlePasswordForm
         }, function (err, response, body) {
             if (err || !response) {
-                reject(err);
-            } else {
-                const $ = cheerio.load(response.body);
-                const error = $('.error-msg').text().trim();
-                if (error) {
-                    reject(new Error(error));
-                }
-                if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                    setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
-                } else {
-                    // Possible 2FA
-                    // Wait for access and tray to continue?
-                    reject(new Error('Google Authentication Stage 3 no Set-Cookie header'))
-                }
-                resolve('');
+                return reject(new Error('Stage 3 response error: ' + err));
             }
+            const $ = cheerio.load(response.body);
+            const error = $('.error-msg').text().trim();
+            if (error) {
+                return reject(new Error('Stage 3 data error: ' + error));
+            }
+            if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
+                setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
+            } else {
+                // Possible 2FA
+                // Wait for access and tray to continue?
+                return reject(new Error('Stage 3 no Set-Cookie header'))
+            }
+            resolve('');
         });
     });
 }
@@ -221,20 +219,19 @@ function connectFourthStage(redirection) {
             method: "GET"
         }, function (err, response, body) {
             if (err || !response) {
-                reject(err);
-            } else {
-                const $ = cheerio.load(response.body);
-                const error = $('.error-msg').text().trim();
-                if (error) {
-                    reject(new Error(error));
-                }
-                if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                    setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
-                } else {
-                    reject(new Error('Google Authentication Stage 3 no Set-Cookie header'))
-                }
-                resolve();
+                return reject(new Error('Stage 4 response error: ' + err));
             }
+            const $ = cheerio.load(response.body);
+            const error = $('.error-msg').text().trim();
+            if (error) {
+                return reject(new Error('Stage 4 data error: ' + error));
+            }
+            if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
+                setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
+            } else {
+                return reject(new Error('Stage 4 no Set-Cookie header'))
+            }
+            resolve();
         });
     })
 }
@@ -253,33 +250,32 @@ function getSharedLocations(savedCookies) {
             }
         }, function (err, response, body) {
             if (err || !response) {
-                reject(err);
-            } else {
-                if (response.statusCode !== 200) {
-                    // connection established but auth failure
-                    reject(new Error(`locationsharing responded with HTTP Status ${response.statusCode}`));
-                } else {
-                    // Parse and save user locations
-                    const locationdata = JSON.parse(body.split('\n').slice(1, -1).join(''));
-                    // Shared location data is contained in the first element
-                    const perlocarr = locationdata[0] || [];
-                    const users = perlocarr.map(data => ({
-                        "id": data[0][0],
-                        "photoURL": data[0][1],
-                        "name": data[0][3],
-                        "lat": data[1] && data[1][1][2],
-                        "lng": data[1] && data[1][1][1],
-                        "locationname": data[1] && data[1][4],
-                        "shortname": data[6] && data[6][3],
-                        "lastupdateepoch": data[1] && data[1][2],
-                        "lastupdate": data[1] && new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0, 10)))
-                    }));
-                    if (users.length > 0)
-                        resolve(users);
-                    else
-                        reject('No results');
-                }
+                return reject(new Error('Locationsharing response error: ' + err));
             }
+            if (response.statusCode !== 200) {
+                // connection established but auth failure
+                return reject(new Error('Locationsharing response status error: HTTP Status ' + response.statusCode));
+            }
+            // Parse and save user locations
+            const locationdata = JSON.parse(body.split('\n').slice(1, -1).join(''));
+            // Shared location data is contained in the first element
+            const perlocarr = locationdata[0] || [];
+            const users = perlocarr.map(data => ({
+                "id": data[0][0],
+                "photoURL": data[0][1],
+                "name": data[0][3],
+                "lat": data[1] && data[1][1][2],
+                "lng": data[1] && data[1][1][1],
+                "locationname": data[1] && data[1][4],
+                "shortname": data[6] && data[6][3],
+                "lastupdateepoch": data[1] && data[1][2],
+                "lastupdate": data[1] && new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0, 10)))
+            }));
+            if (users.length > 0)
+                resolve(users);
+            else
+                resolve([]); // resolve empty array if no data
+
         });
     })
 }

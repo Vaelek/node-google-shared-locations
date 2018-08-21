@@ -1,12 +1,12 @@
 /**
- * Script to test node-google-shared-locations module
- * Run: node test.js yourgmailaccount@gmail.com yourgmailpassword
+ * Script to check node-google-shared-locations module
+ * Run: node check.js yourgmailaccount@gmail.com yourgmailpassword
  */
 
 const gsl = require('./index');
 
 if (process.argv.length < 4) {
-  console.error('Please enter your Google Account login. Example: node test.js yourgmailaccount@gmail.com yourgmailpassword');
+  console.error('Please enter your Google Account login. Example: node check.js yourgmailaccount@gmail.com yourgmailpassword');
   return;
 } else {
   process.argv.shift();
