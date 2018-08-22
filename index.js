@@ -13,13 +13,45 @@ module.exports = {
     },
 
     async authenticate() {
+        if (this.AUTHENTICATED) {
+            return Promise.resolve(true); // return to skip connection stages
+        }
+        return connectFirstStage(
+            savedCookies
+        ).then(googleEmailForm => {
+            googleEmailForm['Email'] = this.credentials.username;
+            return connectSecondStage(savedCookies, googleEmailForm);
+        }, rejectReasonFirstStage => {
+            console.warn('If logins are being blocked, try to allow it here: https://accounts.google.com/b/0/DisplayUnlockCaptcha');
+            return Promise.reject(rejectReasonFirstStage);
+        }).then(googlePasswordForm => {
+            googlePasswordForm['Passwd'] = this.credentials.password;
+            return connectThirdStage(savedCookies, googlePasswordForm);
+        }, rejectReasonSecondStage => {
+            return Promise.reject(rejectReasonSecondStage);
+        }).then(redirection => {
+            return connectFourthStage(redirection);
+        }, rejectReasonThirdStage => {
+            return Promise.reject(rejectReasonThirdStage);
+        }).then(() => {
+            this.AUTHENTICATED = true;
+            return Promise.resolve(true);
+        }, rejectReasonFourthStage => {
+            return Promise.reject(rejectReasonFourthStage);
+        });
+
+        /*
         return new Promise((resolve, reject) => {
             if (this.AUTHENTICATED) {
                 return resolve(true); // return to skip connection stages
             }
             connectFirstStage(savedCookies).catch(firstStageError => {
                 console.warn('If logins are being blocked, try to allow it here: https://accounts.google.com/b/0/DisplayUnlockCaptcha');
-                reject(firstStageError);
+                // reject(firstStageError);
+                resolve({
+                    status: "error",
+                    error: firstStageError.message
+                });
                 throw new Error(firstStageError); // throw to skip next stages
             }).then(googleEmailForm => {
                 googleEmailForm['Email'] = this.credentials.username;
@@ -34,21 +66,27 @@ module.exports = {
                 resolve(true);
             }).catch(failure => {
                 console.error('Authentification to Google failed.');
-                reject(failure);
+                // reject(failure);
+                resolve({
+                    status: "error",
+                    error: failure.message
+                });
             });
         });
+        */
     },
 
     async getLocations() {
-        return new Promise((resolve, reject) => {
-            this.authenticate().then(() => {
+        return this.authenticate().then(authenticateResult => {
+            if (!authenticateResult) { return Promise.reject('Not authenticated'); }
                 return getSharedLocations(savedCookies);
-            }).then(data => {
-                resolve(data);
-            }).catch(failure => {
-                reject(failure);
+            })
+            .then(data => {
+                return Promise.resolve(data);
+            })
+            .catch(failure => {
+                return Promise.reject(failure);
             });
-        });
     }
 }
 
@@ -204,10 +242,10 @@ function connectThirdStage(savedCookies, googlePasswordForm) {
 
 
 function connectFourthStage(redirection) {
-    console.log(redirection, 'redirection');
+    // console.log(redirection, 'redirection');
     return new Promise((resolve, reject) => {
         if (redirection === '') {
-            resolve();
+            return resolve();
         }
         request({
             url: redirection,
@@ -231,7 +269,7 @@ function connectFourthStage(redirection) {
             } else {
                 return reject(new Error('Stage 4 no Set-Cookie header'))
             }
-            resolve();
+            return resolve();
         });
     })
 }
@@ -272,9 +310,9 @@ function getSharedLocations(savedCookies) {
                 "lastupdate": data[1] && new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0, 10)))
             }));
             if (users.length > 0)
-                resolve(users);
+                return resolve(users);
             else
-                resolve([]); // resolve empty array if no data
+                return resolve([]); // resolve empty array if no data
 
         });
     })
