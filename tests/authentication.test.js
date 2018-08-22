@@ -1,8 +1,7 @@
 const gsl = require('./../index');
 
-// avoid long error logs
 beforeEach(() => {
-  // console.log = jest.fn();
+  // console.log = jest.fn(); // avoid long error logs
 });
 
 test('has default empty credentials', () => {
@@ -19,7 +18,6 @@ test('bad account login should end with an error in the stage 2', async () => {
   try {
     await gsl.authenticate();
   } catch (e) {
-    // console.log(e, 'ZACHYTENA CHYBA');
     expect(e.message).toMatch(/Stage 2 data error:.*/);
   }
 });
