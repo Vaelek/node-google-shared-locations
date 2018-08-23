@@ -5,3 +5,4 @@ coverage
 .history
 npm-debug.log
 package-lock.json
+credentials.json

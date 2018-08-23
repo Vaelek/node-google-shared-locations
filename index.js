@@ -4,6 +4,8 @@ const cheerio = require('cheerio');
 const savedCookies = {
     'google.com': {}
 }
+let lastUrl = null;
+let nextSubmitForm = null;
 
 module.exports = {
     AUTHENTICATED: false,
@@ -11,82 +13,83 @@ module.exports = {
         username: '',
         password: ''
     },
+    lastSharedLocation: null,
 
-    async authenticate() {
-        if (this.AUTHENTICATED) {
-            return Promise.resolve(true); // return to skip connection stages
-        }
-        return connectFirstStage(
-            savedCookies
-        ).then(googleEmailForm => {
-            googleEmailForm['Email'] = this.credentials.username;
-            return connectSecondStage(savedCookies, googleEmailForm);
-        }, rejectReasonFirstStage => {
-            console.warn('If logins are being blocked, try to allow it here: https://accounts.google.com/b/0/DisplayUnlockCaptcha');
-            return Promise.reject(rejectReasonFirstStage);
-        }).then(googlePasswordForm => {
-            googlePasswordForm['Passwd'] = this.credentials.password;
-            return connectThirdStage(savedCookies, googlePasswordForm);
-        }, rejectReasonSecondStage => {
-            return Promise.reject(rejectReasonSecondStage);
-        }).then(redirection => {
-            return connectFourthStage(redirection);
-        }, rejectReasonThirdStage => {
-            return Promise.reject(rejectReasonThirdStage);
-        }).then(() => {
-            this.AUTHENTICATED = true;
-            return Promise.resolve(true);
-        }, rejectReasonFourthStage => {
-            return Promise.reject(rejectReasonFourthStage);
-        });
-
-        /*
+    /**
+     * Authenticate on google.
+     */
+    async authenticate(twoFactorConfirmation = false) {
         return new Promise((resolve, reject) => {
             if (this.AUTHENTICATED) {
-                return resolve(true); // return to skip connection stages
+                return resolve(true);
             }
-            connectFirstStage(savedCookies).catch(firstStageError => {
-                console.warn('If logins are being blocked, try to allow it here: https://accounts.google.com/b/0/DisplayUnlockCaptcha');
-                // reject(firstStageError);
-                resolve({
-                    status: "error",
-                    error: firstStageError.message
+            if (!twoFactorConfirmation) {
+                connectStage1(savedCookies).then(googleEmailForm => {
+                    googleEmailForm['Email'] = this.credentials.username;
+                    return connectStage2(savedCookies, googleEmailForm);
+                }, reject1 => {
+                    console.warn('If logins are being blocked, try to allow it here: https://accounts.google.com/b/0/DisplayUnlockCaptcha');
+                    reject(reject1);
+                    return Promise.reject();
+                }).then(googlePasswordForm => {
+                    googlePasswordForm['Passwd'] = this.credentials.password;
+                    return connectStage3(savedCookies, googlePasswordForm);
+                }, reject2 => {
+                    reject(reject2);
+                    return Promise.reject();
+                }).then(redirect => {
+                    return connectStage4(redirect);
+                }, reject3 => {
+                    reject(reject3);
+                    return Promise.reject();
+                }).then(redirect => {
+                    return connectStage5(redirect);
+                }, reject4 => {
+                    reject(reject4);
+                    return Promise.reject();
+                }).then(authenticated => {
+                    this.AUTHENTICATED = true;
+                    return resolve(authenticated);
+                }, reject5 => {
+                    reject(reject5);
                 });
-                throw new Error(firstStageError); // throw to skip next stages
-            }).then(googleEmailForm => {
-                googleEmailForm['Email'] = this.credentials.username;
-                return connectSecondStage(savedCookies, googleEmailForm);
-            }).then(googlePasswordForm => {
-                googlePasswordForm['Passwd'] = this.credentials.password;
-                return connectThirdStage(savedCookies, googlePasswordForm);
-            }).then(redirection => {
-                return connectFourthStage(redirection);
-            }).then(() => {
-                this.AUTHENTICATED = true;
-                resolve(true);
-            }).catch(failure => {
-                console.error('Authentification to Google failed.');
-                // reject(failure);
-                resolve({
-                    status: "error",
-                    error: failure.message
+            } else {
+                connectFourthStage(nextSubmitForm).then(authenticated => {
+                    if (authenticated) {
+                        this.AUTHENTICATED = true;
+                        return resolve(true);
+                    }
+                    return reject(new Error('2FA unsuccessful'));
                 });
-            });
+            }
         });
-        */
     },
 
-    async getLocations() {
-        return this.authenticate().then(authenticateResult => {
-            if (!authenticateResult) { return Promise.reject('Not authenticated'); }
-                return getSharedLocations(savedCookies);
-            })
-            .then(data => {
-                return Promise.resolve(data);
-            })
-            .catch(failure => {
-                return Promise.reject(failure);
-            });
+    /**
+     * Get shared location from google map.
+     * Try to authenicate if is not authenticated already.
+     */
+    async getLocations(twoFactorConfirmation = false) {
+        return new Promise((resolve, reject) => {
+            this.authenticate(twoFactorConfirmation).then(
+                    authenticateResult => {
+                        if (!authenticateResult) {
+                            reject('Not authenticated');
+                            return Promise.reject();
+                        }
+                        return getSharedLocations(savedCookies);
+                    }
+                )
+                .then(data => {
+                    this.lastSharedLocation = data;
+                    return resolve(data);
+                })
+                .catch(failure => {
+                    this.AUTHENTICATED = false;
+                    this.lastSharedLocation = null;
+                    return reject(failure);
+                });
+        });
     }
 }
 
@@ -114,14 +117,11 @@ function setCookie(savedCookies, cookies, domain) {
     });
 }
 
-
 /**
- * Connect to Google, call login page
- * What we get here:
- * - GAPS cookie
- * - glx form identifier
+ * Open intial page and get GAPS cookie.
+ * Extract login form.
  */
-function connectFirstStage(savedCookies) {
+function connectStage1(savedCookies) {
     return new Promise((resolve, reject) => {
         // first get GAPS cookie
         request({
@@ -139,37 +139,37 @@ function connectFirstStage(savedCookies) {
             }
         }, function (err, response, body) {
             if (err || !response) {
-                return reject(new Error('Stage 1 response error: ' + err));
+                return reject(new Error('Response error (1): ' + err));
             }
             if (response.statusCode !== 200) {
                 // connection established but something went wrong
-                return reject(new Error('Stage 1 response status error: HTTP Status ' + response.statusCode));
+                return reject(new Error('Response status code ' + response.statusCode));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
                 setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
             } else {
-                return reject(new Error('Stage 1 no Set-Cookie header'));
+                return reject(new Error('No Set-Cookie header (1)'));
             }
             // get all form fields
             const $ = cheerio.load(response.body);
             const error = $('.error-msg').text().trim();
             if (error) {
-                return reject(new Error('Stage 1 data error: ' + error));
+                return reject(new Error('Data error (1): ' + error));
             }
             const googleEmailForm = $("form").serializeArray()
                 .reduce((r, x) => Object.assign({}, r, {
                     [x.name]: x.value,
                 }), {});
-            resolve(googleEmailForm);
+            return resolve(googleEmailForm);
         });
     });
 }
 
 /**
- * We have the Google email form
- * Now check for signin form with password
+ * Get GAPS and GALX cookies. Now we have the Google login form for set user name.
+ * Check for signin form with password input box.
  */
-function connectSecondStage(savedCookies, googleEmailForm) {
+function connectStage2(savedCookies, googleEmailForm) {
     return new Promise((resolve, reject) => {
         request({
             url: "https://accounts.google.com/signin/v1/lookup",
@@ -182,33 +182,33 @@ function connectSecondStage(savedCookies, googleEmailForm) {
             form: googleEmailForm
         }, function (err, response, body) {
             if (err || !response) {
-                return reject(new Error('Stage 2 response error: ' + err));
+                return reject(new Error('Response error (2): ' + err));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
                 setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
             } else {
-                return reject(new Error('Stage 2 no Set-Cookie header'))
+                return reject(new Error('No Set-Cookie header (2)'))
             }
             // get all form fields
             const $ = cheerio.load(response.body);
             const error = $('.error-msg').text().trim();
             if (error) {
-                return reject(new Error('Stage 2 data error: ' + error));
+                return reject(new Error('Data error (2): ' + error));
             }
             const googlePasswordForm = $("form").serializeArray()
                 .reduce((r, x) => Object.assign({}, r, {
                     [x.name]: x.value,
                 }), {});
-            resolve(googlePasswordForm);
+            return resolve(googlePasswordForm);
         });
     });
 }
 
 /**
- * We have the GAPS cookie and the glx identifier,
+ * We have the GAPS cookie and the GALX identifier.
  * Start username and password challenge now.
  */
-function connectThirdStage(savedCookies, googlePasswordForm) {
+function connectStage3(savedCookies, googlePasswordForm) {
     return new Promise((resolve, reject) => {
         request({
             url: "https://accounts.google.com/signin/challenge/sl/password",
@@ -219,42 +219,141 @@ function connectThirdStage(savedCookies, googlePasswordForm) {
             },
             method: "POST",
             form: googlePasswordForm
+            // followAllRedirects: true
         }, function (err, response, body) {
             if (err || !response) {
-                return reject(new Error('Stage 3 response error: ' + err));
+                return reject(new Error('Response error (3): ' + err));
             }
             const $ = cheerio.load(response.body);
             const error = $('.error-msg').text().trim();
             if (error) {
-                return reject(new Error('Stage 3 data error: ' + error));
+                return reject(new Error('Data error (3): ' + error));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
                 setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
-            } else {
-                // Possible 2FA
-                // Wait for access and tray to continue?
-                return reject(new Error('Stage 3 no Set-Cookie header'))
+                if (savedCookies['google.com']['SID'] !== undefined) {
+                    return resolve({
+                        url: '',
+                        referer: ''
+                    });
+                }
             }
-            resolve('');
+            if (response.headers['location']) {
+                // console.warn('Possible 2FA. Try to call again with twoFactorConfirmation = true, after confirmation on mobile phone.');
+                return resolve({
+                    url: response.headers['location'],
+                    referer: response.request.href
+                });
+            }
+            return reject(new Error('No Set-Cookie header (3)'));
         });
     });
 }
 
-
-function connectFourthStage(redirection) {
-    // console.log(redirection, 'redirection');
+/**
+ * Check if we need to redirect for 2FA confirmation.
+ * If there is only one form after redirect, user need to click "Yes" confirmation on phone.
+ * If there is multiple forms, google asks for exact confirmation type (this script try to call first)
+ * @param {{url: string, referer: string}} urlData 
+ */
+function connectStage4(urlData) {
+    if (!urlData || (urlData.url || '') === '') {
+        return Promise.resolve({
+            url: '',
+            referer: urlData.url
+        });
+    }
     return new Promise((resolve, reject) => {
-        if (redirection === '') {
-            return resolve();
-        }
         request({
-            url: redirection,
+            url: urlData.url,
             headers: {
                 "Cookie": getCookie(savedCookies, 'google.com'),
                 "Referer": "https://accounts.google.com/signin/challenge/sl/password",
                 "Origin": "https://accounts.google.com"
             },
             method: "GET"
+        }, function (err, response, body) {
+            if (err || !response) {
+                return reject(new Error('Response error (4): ' + err));
+            }
+            const $ = cheerio.load(response.body);
+            const error = $('.error-msg').text().trim();
+            if (error) {
+                return reject(new Error('Data error (4): ' + error));
+            }
+            if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
+                setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
+            }
+            if ($('form').length === 1) {
+                nextSubmitForm = $("form").serializeArray();
+                return reject(new Error('Waiting for 2FA confirmation'));
+            }
+            if ($('form[method=POST]').length > 1) {
+                let formsArray = $("form[method=POST]");
+                formsArray.splice(1);
+                nextSubmitForm = formsArray.serializeArray();
+                return resolve({
+                    url: "https://accounts.google.com" + formsArray[0]['attribs']['action'],
+                    referer: response.request.href
+                });
+            }
+            return reject(new Error('Unknown page'));
+        });
+    });
+}
+
+// TODO: neviem sa prihlasit ak sa to neda potvrdit pomocou mobilu
+
+/**
+ * Post form if url is set.
+ * Return true if target cookie is found
+ * @param {{url: string, referer: string}} urlData 
+ */
+function connectStage5(urlData) {
+    if (!urlData || (urlData.url || '') === '') {
+        return Promise.resolve(savedCookies['google.com']['SID'] !== undefined);
+    }
+    return new Promise((resolve, reject) => {
+        request({
+            url: urlData.url,
+            headers: {
+                "Cookie": getCookie(savedCookies, 'google.com'),
+                "Referer": "https://accounts.google.com/signin/challenge/sl/password",
+                "Origin": "https://accounts.google.com"
+            },
+            method: "POST",
+            form: nextSubmitForm
+        }, function (err, response, body) {
+            if (err || !response) {
+                return reject(new Error('Response error (5): ' + err));
+            }
+            const $ = cheerio.load(response.body);
+            const error = $('.error-msg').text().trim();
+            if (error) {
+                return reject(new Error('Data error (5): ' + error));
+            }
+            if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
+                setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
+            } else {
+                return reject(new Error('No Set-Cookie header (5)'));
+            }
+            return resolve(savedCookies['google.com']['SID'] !== undefined);
+        });
+    })
+}
+
+
+function connectFourthStage(nextSubmitForm) {
+    return new Promise((resolve, reject) => {
+        request({
+            url: "https://accounts.google.com/signin/challenge/az/5",
+            headers: {
+                "Cookie": getCookie(savedCookies, 'google.com'),
+                "Referer": "https://accounts.google.com/signin/challenge/sl/password",
+                "Origin": "https://accounts.google.com"
+            },
+            method: "POST",
+            form: nextSubmitForm
         }, function (err, response, body) {
             if (err || !response) {
                 return reject(new Error('Stage 4 response error: ' + err));
@@ -269,7 +368,7 @@ function connectFourthStage(redirection) {
             } else {
                 return reject(new Error('Stage 4 no Set-Cookie header'))
             }
-            return resolve();
+            return resolve(true);
         });
     })
 }
