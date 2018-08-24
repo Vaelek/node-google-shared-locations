@@ -25,17 +25,18 @@ gsl.credentials = {
 console.time('Running time');
 gsl.getLocations().then(result => {
   return Promise.resolve(result);
-}, fail => {
-  if (fail.message === 'Possible 2FA') {
-    console.log('I\'m waiting for 15 seconds to confirm the two-factor login to mobile and I\'ll continue');
+}).catch(error => {
+  if (error.message === 'Cell phone verification') {
+    console.timeEnd('Running time');
+    console.log('\nWaiting 30 seconds for cell phone verification. Please answer "Yes" on your phone.');
     return new Promise((resolve, reject) => {
       setTimeout(() => {
-        resolve(gsl.getLocations(true));
-      }, 15000);
+        console.time('Running time');
+        resolve(gsl.getLocations());
+      }, 30000);
     });
-  } else {
-    return Promise.reject(fail);
   }
+  return Promise.reject(error);
 }).then(result => {
   console.log('Result: ok');
   console.timeEnd('Running time');
