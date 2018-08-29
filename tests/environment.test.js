@@ -12,7 +12,7 @@ beforeAll(() => {
   } catch (e) {
     console.warn('Missing credentials file');
     console.log('Please create credentials.json file in tests directory with content:');
-    console.log('{"username": "YOURGOOGLEACCOUNT@gmail.com", "password": "YOURPASSWORD"}');
+    console.log('{"username": "YourEmail@gmail.com", "password": "supersecretPassword"}');
   }
 });
 
