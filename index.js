@@ -7,10 +7,13 @@ const savedCookies = {
 /**
  * Challenges supported by this script sort by priority.
  * Known methods:
- * az/4 - verification by phone
- * totp/2 - Google Authenticator
+ * /signin/challenge/az/   (p) - Prompt verification by phone
+ * /signin/challenge/totp/ (a) - Google Authenticator
+ * /signin/challenge/ipp/  (s) - SMS or voice call
+ * /signin/challenge/iap/  (s) - SMS or voice call
+ * /signin/challenge/sk/   (k) - Security key
  */
-const supportedChallenges = ['az/4'];
+const supportedChallenges = ['/signin/challenge/az/'];
 let nextSubmitForm = null;
 let showStage = false;
 
@@ -36,6 +39,18 @@ module.exports = {
      */
     set debuging(state) {
         showStage = state;
+    },
+    /**
+     * Get actual cookies for google.com as object
+     */
+    get cookies() {
+        return savedCookies['google.com'];
+    },
+    /**
+     * Set cookies for google.com from previous saved cookies
+     */
+    set cookies(googleComCookiesJson) {
+        savedCookies['google.com'] = googleComCookiesJson;
     },
 
     /**
@@ -72,12 +87,14 @@ module.exports = {
                     reject(reject4);
                 });
             } else {
-                connectFourthStage(nextSubmitForm).then(authenticated => {
+                connectStage5().then(authenticated => {
                     if (authenticated) {
                         this.authenticated = true;
                         return resolve(true);
                     }
                     return reject(new Error('Verification unsuccessful'));
+                }, reject5 => {
+                    reject(reject5);
                 });
             }
         });
@@ -133,6 +150,30 @@ function setCookie(savedCookies, cookies, domain) {
         ] = cookie.split(';')[0].split('=');
         savedCookies[domain][key] = value;
     });
+}
+
+/**
+ * Map challenge fragment to code and full description
+ * @param {string} challengeFragment
+ */
+function getChallengeType(challengeFragment) {
+    switch (challengeFragment) {
+        case '/signin/challenge/az/':
+            return {
+                code: 'p',
+                description: 'Cell phone verification'
+            };
+        case '/signin/challenge/totp/':
+            return {
+                code: 'a',
+                description: 'Google Authenticator'
+            };
+        default:
+            return {
+                code: '',
+                description: ''
+            };
+    }
 }
 
 /**
@@ -342,48 +383,26 @@ function connectStage4(urlData) {
                     return resolve(true);
                 }
             }
-            var challenge = null;
+            var challenge = undefined;
             var forms = $('form');
-            // TODO:
-            // takze tuto najprv skontrolovat ci ide o rozhodovaciu stranku, alebo len potvrdzovaciu formu.
-            // ak je forma typu potvrdenie na telefone, tak skoncim a cakam na opatovne zavolanie
-            // autentifikacie bez akejkolvek hodnoty .. potvrdte Yes na telefone a skuste znova
-            // (ako vstup by som mal chciet string)
-            // ak je to google autentifikator, tak cakam na opatovne zavolanie s autentifikacnym kodom
-            // ak je to hocico ine, koncim ako neznamy druh autentifikacie
+
             if (forms.length > 0) {
                 const challenges = supportedChallenges.map(s => {
-                    const form = forms.toArray().find(f => (f['attribs'] && f['attribs']['action'] || '').endsWith(s));
+                    const form = forms.toArray().find(f => (f['attribs'] && f['attribs']['action'] || '').indexOf(s) >= 0);
+                    const challengeType = getChallengeType(s);
                     return {
                         exists: form != null,
-                        challengeSuffix: s,
-                        challengeType: getChallengeType(s),
+                        challengeFragment: s,
+                        challengeCode: challengeType.code,
+                        challengeDescription: challengeType.description,
                         form: form
                     };
                 });
-                // tu je potrebne vybrat prvy zaznam kde challenge exists .. a podla typu bud potvrdit, alebo resolvnut
-                // a na naslednej adrese zadat kod
-                if (challenges) {
-                    challenge = challenges
-                }
 
-                const forms = $("form").filter((i, f) => {
-                    return supportedChallenges.some((s) => {
-                        return (f['attribs'] && f['attribs']['action']).endsWith(s);
-                    });
-                });
-                if (forms) {
-                    challenge = supportedChallenges.map((s) => {
-                        const form = forms.find((f) => (f['attribs'] && f['attribs']['action']).endsWith(s));
-                        return {
-                            exists: form != null,
-                            challengeSuffix: s,
-                            challengeType: getChallengeType(s),
-                            form: form
-                        };
-                    }).find((c) => c.exists);
+                if (challenges) {
+                    challenge = challenges.find(c => c.exists);
                 }
-                if (challenge == null) {
+                if (challenge === undefined) {
                     if (showStage) {
                         console.warn(forms, stage + ' unsupported challenge forms');
                     }
@@ -396,37 +415,27 @@ function connectStage4(urlData) {
                 return reject(new Error('Nothing to follow'));
             }
 
-            switch (challenge.challengeSuffix) {
-                case 'az/4':
+            switch (challenge.challengeCode) {
+                case 'p':
                     if (showStage) {
                         console.warn(challenge, stage + ' waiting for verification by cell phone');
                     }
+                    const action = (challenge.form['attribs']['action'] || '').startsWith('http') ?
+                        challenge.form['attribs']['action'] :
+                        'https://accounts.google.com' + (challenge.form['attribs']['action'] || '');
                     nextSubmitForm = {
-                        form: form.serializeArray(),
-                        action: form[0]['attribs']['action'] || '',
-                        method: form[0]['attribs']['method'] || ''
+                        form: $(challenge.form).serializeArray()
+                            .reduce((r, x) => Object.assign({}, r, {
+                                [x.name]: x.value,
+                            }), {}),
+                        action: action
                     };
                     return reject(new Error('Cell phone verification'));
                 default:
-                    break;
+                    return reject(new Error('Unsupported challenge'));
             }
         });
     });
-}
-
-/**
- * Map challenge to full description
- * @param {string} challengeSuffix 
- */
-function getChallengeType(challengeSuffix) {
-    switch (challengeSuffix) {
-        case 'az/4':
-            return 'Cell phone verification';
-        case 'totp/2':
-            return 'Google Authenticator';
-        default:
-            return '';
-    }
 }
 
 /**
@@ -452,17 +461,26 @@ function connectStage5() {
             form: nextSubmitForm.form
         }, function (err, response, body) {
             if (err || !response) {
-                return reject(new Error('Response error (5): ' + err));
+                if (showStage) {
+                    console.warn(err, stage + ' request/response error');
+                }
+                return reject(new Error('Request error'));
             }
             const $ = cheerio.load(response.body);
             const error = $('.error-msg').text().trim();
             if (error) {
-                return reject(new Error('Data error (5): ' + error));
+                if (showStage) {
+                    console.warn(error, stage + ' error message on webpage');
+                }
+                return reject(new Error('Error on webpage'));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
                 setCookie(savedCookies, response.headers['set-cookie'], 'google.com');
             } else {
-                return reject(new Error('No Set-Cookie header (5)'));
+                if (showStage) {
+                    console.warn(response.headers, stage + ' missing set-cookie header');
+                }
+                return reject(new Error('No cookies'));
             }
             return resolve(savedCookies['google.com']['SID'] !== undefined);
         });

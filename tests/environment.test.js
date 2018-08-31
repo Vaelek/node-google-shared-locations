@@ -11,8 +11,8 @@ beforeAll(() => {
     credentials = JSON.parse(fs.readFileSync('./tests/credentials.json', 'utf8'));
   } catch (e) {
     console.warn('Missing credentials file');
-    console.log('Please create credentials.json file in tests directory with content:');
-    console.log('{"username": "YourEmail@gmail.com", "password": "supersecretPassword"}');
+    console.log('Please create credentials.json file in tests directory with content:\n' +
+      '{"username": "googleAccountEmail", "password": "googleAccountPassword"}');
   }
 });
 

@@ -16,12 +16,14 @@ or
 
 ## Sample Usage
 
+Minimal example of usage:
+
 ```js
 const GoogleSharedLocations = require('google-location-sharing');
 
 GoogleSharedLocations.credentials = {
-    username: 'YourEmail@gmail.com',
-    password: 'supersecretPassword'
+    username: 'googleAccountEmail',
+    password: 'googleAccountPassword'
 }
 
 GoogleSharedLocations.getLocations()
@@ -34,9 +36,11 @@ GoogleSharedLocations.getLocations()
     });
 ```
 
-### Example Return Data
+_For a complete example of how to use this library, save and re-load cookies, see file `check.js` in the `tests` directory._
 
-Array of objects
+### Return data
+
+Array of objects with localization data.
 
 ```javascript
 [{
@@ -65,7 +69,8 @@ Array of objects
 ### Note
 
 On first run, a full login will be performed to establish the cookie.  
-After this, subsequent calls to `getLocations()` will use the cookie.
+After this, subsequent calls to `getLocations()` (within the same run) will use the cookie.  
+You can save and load cookies in your own code to be persistent, an example of how to do it is in the `check.js` file.
 
 ## Testing
 
@@ -75,6 +80,6 @@ After this, subsequent calls to `getLocations()` will use the cookie.
 
 ### Functional test for real use case
 
-Run from project root directory: `node tests/check.js YourEmail@gmail.com supersecretPassword`
+To test this library with real account you need to call this script from project root directory: `node check.js <googleAccountEmail> <googleAccountPassword> [--load-cookies] [--save-cookies]`
 
-This command runs the script with authentication, to obtain shared location. It returns output with time logs and shared locations for user on input.
+This command runs authentication, to obtain shared location. It returns time logs, cookies and shared locations for user on input. If you use `--save-cookies` parameter, you can next time use `--load-cookies` and reduce time for get location data (skip authentication).
