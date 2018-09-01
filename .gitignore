@@ -1,9 +1,17 @@
+# node
 node_modules
 .node-persist
-coverage
-.vscode
-.idea
-.history
 npm-debug.log
 package-lock.json
+
+# temporary
+/temp/*
+.history
+
+# editor
+.vscode
+.idea
+coverage
+
+# testing
 credentials.json

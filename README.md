@@ -80,6 +80,6 @@ You can save and load cookies in your own code to be persistent, an example of h
 
 ### Functional test for real use case
 
-To test this library with real account you need to call this script from project root directory: `node check.js <googleAccountEmail> <googleAccountPassword> [--load-cookies] [--save-cookies]`
+To test this library with real account you need to call this script from project root directory: `node check.js <googleAccountEmail> [googleAccountPassword] [--options]`
 
 This command runs authentication, to obtain shared location. It returns time logs, cookies and shared locations for user on input. If you use `--save-cookies` parameter, you can next time use `--load-cookies` and reduce time for get location data (skip authentication).
