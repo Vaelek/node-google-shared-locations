@@ -3,15 +3,10 @@
  * Usage:
  *     node check.js <googleAccountEmail> <googleAccountPassword>
  *   # Save cookies and use it for next call
- *     node check.js <googleAccountEmail> <googleAccountPassword> --save-cookies
- *     node check.js <googleAccountEmail> --load-cookies --save-cookies
+ *     node check.js <googleAccountEmail> <googleAccountPassword> --save
+ *     node check.js <googleAccountEmail> --load --save
  *   # How to use
  *     node check.js --help
- * 
- * Options:
- *   --load-cookies     Load saved cookies for googleAccountEmail, googleAccountPassword will be ignored if cookies exists.
- *   --save-cookies     Save cookies for googleAccountEmail.
- *   --clear-cookies    Clear saved cookies for googleAccountEmail.
  */
 
 const gsl = require('./../index');
@@ -32,32 +27,32 @@ async function check() {
     console.log('  # One time check of locations for selected account and password');
     console.log('    node check.js <googleAccountEmail> <googleAccountPassword>');
     console.log('  # Save cookies and use it for next call');
-    console.log('    node check.js <googleAccountEmail> <googleAccountPassword> --save-cookies');
-    console.log('    node check.js <googleAccountEmail> --load-cookies --save-cookies');
+    console.log('    node check.js <googleAccountEmail> <googleAccountPassword> --save');
+    console.log('    node check.js <googleAccountEmail> --load --save');
     console.log('  # Clear cookies for selected account');
-    console.log('    node check.js <googleAccountEmail> --clear-cookies');
+    console.log('    node check.js <googleAccountEmail> --clear');
     console.log('  # Clear all cookies');
-    console.log('    node check.js --clear\n');
+    console.log('    node check.js --clear-all\n');
     console.log('Options:');
-    console.log('  --load-cookies     Load saved cookies for googleAccountEmail, googleAccountPassword will be ignored if cookies exists.');
-    console.log('  --save-cookies     Save cookies for googleAccountEmail.');
-    console.log('  --clear-cookies    Clear saved cookies for googleAccountEmail.');
-    console.log('  --debug            Log with step informations on errors.');
-    console.log('  --clear            Clear all cookies.');
+    console.log('  --load        Load user credentials, googleAccountPassword will be ignored if cookies exists.');
+    console.log('  --save        Save user credentials (user account name and cookies).');
+    console.log('  --clear       Clear saved data for selected user account.');
+    console.log('  --clear-all   Clear all cookies.');
+    console.log('  --debug       Log with step informations on errors.');
     return;
   }
 
+  const clearAll = parameters.indexOf(' --clear-all ') >= 0;
   const clear = parameters.indexOf(' --clear ') >= 0;
-  const clearCookies = parameters.indexOf(' --clear-cookies ') >= 0;
-  const loadCookies = parameters.indexOf(' --load-cookies ') >= 0;
-  const saveCookies = parameters.indexOf(' --save-cookies ') >= 0;
+  const load = parameters.indexOf(' --load ') >= 0;
+  const save = parameters.indexOf(' --save ') >= 0;
   const debug = parameters.indexOf(' --debug ') >= 0;
 
-  if (clear || clearCookies || loadCookies || saveCookies) {
+  if (clearAll || clear || load || save) {
     await storage.init();
   }
 
-  if (clear) {
+  if (clearAll) {
     await storage.clear();
     console.log('OK, all cleaned.');
     return;
@@ -65,14 +60,14 @@ async function check() {
 
   const username = (process.argv.length >= 1 && !process.argv[0].startsWith('--') ? process.argv[0] : '');
 
-  if (clearCookies) {
+  if (clear) {
     const keys = await storage.keys()
     const keyExists = keys.indexOf('cookies' + '_' + username) >= 0;
     if (username.length > 0 && keyExists) {
-      await storage.removeItem('cookies' + '_' + username);
-      console.log('OK, cookies for "' + username + '" cleared.');
+      await storage.removeItem('credentials' + '_' + username);
+      console.log('OK, credentials for "' + username + '" cleared.');
     } else {
-      console.log('No cookies for "' + username + '" found.');
+      console.log('No credentials for "' + username + '" found.');
     }
     return;
   }
@@ -88,23 +83,23 @@ async function check() {
     !process.argv[1].startsWith('--save-cookies') &&
     !process.argv[1].startsWith('--debug') ? process.argv[1] : '';
 
-  if (password.length === 0 && !loadCookies) {
-    console.log('Missing password or --load-cookies option.');
+  if (password.length === 0 && !load) {
+    console.log('Missing password or --load option.');
     return;
   }
 
   gsl.googleEmail = username;
   gsl.googlePassword = password;
 
-  if (loadCookies) {
-    const cookies = await storage.getItem('cookies' + '_' + username);
-    if (cookies) {
-      gsl.cookies = cookies;
-      console.log('Input cookies (load for "' + username + '"):\n' + JSON.stringify(cookies) + '\n');
+  if (load) {
+    const credentials = await storage.getItem('credentials' + '_' + username);
+    if (credentials) {
+      gsl.credentials = credentials;
+      console.log('Credentials loaded for "' + username + '":\n' + JSON.stringify(credentials) + '\n');
     } else {
-      console.warn('Cookies loading failed! Saved cookies for "' + username + '" not found.');
+      console.warn('Credentials loading failed! No credentials for "' + username + '" found.');
       if (password.length === 0) {
-        console.log('Missing password and cookies. Aborting.');
+        console.log('Missing password. Aborting.');
         return;
       }
     }
@@ -131,7 +126,7 @@ async function check() {
     console.timeEnd('Running time');
     console.log('Response (number of locations: ' + result.length + '):');
     console.log(JSON.stringify(result));
-    console.log('Wait 5 seconds for next automatic call to check cookies remembering.');
+    console.log('Wait 5 seconds for next automatic call to check credentials remembering.');
 
     return new Promise((resolve, reject) => {
       setTimeout(() => {
@@ -145,10 +140,9 @@ async function check() {
     console.log('Response (number of locations: ' + result.length + '):')
     console.log(JSON.stringify(result));
 
-    // Cookies info
-    console.log('\nOutput cookies' + (saveCookies ? ' (saved for "' + username + '")' : '') + ':\n' + JSON.stringify(gsl.cookies));
-    if (saveCookies) {
-      await storage.setItem('cookies' + '_' + username, gsl.cookies);
+    console.log('\nCredentials' + (save ? ' saved' : '') + ' for "' + username + '":\n' + JSON.stringify(gsl.credentials));
+    if (save) {
+      await storage.setItem('credentials' + '_' + username, gsl.credentials);
     }
   }).catch(error => {
     console.log('Result: error');

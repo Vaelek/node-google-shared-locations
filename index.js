@@ -30,13 +30,19 @@ const challengesMap = [{
     description: 'Security key',
     implementation: false
 }];
+
 let showStage = false;
-let ownerLocationData = true;
-let googleAccountEmail = '';
-let googleAccountPassword = '';
+let ownerLocation = true;
+
+let googlePassword = '';
+let stageData = {};
+
 let lastSharedLocation = null;
-let stageData = {
+let credentials = {
+    email: '',
     authenticated: false,
+    name: '',
+    picture: '',
     cookies: {}
 };
 
@@ -45,32 +51,32 @@ module.exports = {
      * Authentication status (true if authentication completed successfully).
      */
     get authenticated() {
-        return stageData['authenticated'];
+        return credentials['authenticated'];
     },
     /**
      * Set authentication status to true to skip first verification step (stage 1) after set new cookies.
      * This can speed up data acquisition, but the credentials will not be checked.
      */
     set authenticated(value) {
-        stageData['authenticated'] = value === true;
+        credentials['authenticated'] = value === true;
     },
     /**
-     * Credentials status (true if googleEmail and googlePassword are set).
+     * Credentials status. True if 'login and password' or credentials are set.
      */
-    get credentials() {
-        return googleAccountEmail !== '' && googleAccountPassword !== '';
+    get credentialsSpecified() {
+        return credentials['email'] !== '' && (googlePassword !== '' || credentials['cookies']);
     },
     /**
      * Set Google account email.
      */
     set googleEmail(value) {
-        googleAccountEmail = value;
+        credentials['email'] = value;
     },
     /**
      * Set Google account password.
      */
     set googlePassword(value) {
-        googleAccountPassword = value;
+        googlePassword = value;
     },
     /**
      * Get last detected shared location from google map.
@@ -88,46 +94,61 @@ module.exports = {
      * Get actual cookies for google.com domain.
      */
     get cookies() {
-        return stageData['cookies'];
+        return credentials['cookies'];
     },
     /**
-     * Set cookies for google.com domain. Authentication status is set to false (for new cookies).
+     * Set cookies for google.com domain. Authentication status is set to false (if you change cookies).
      */
     set cookies(value) {
-        stageData['cookies'] = value;
-        stageData['authenticated'] = false;
+        credentials['cookies'] = value;
+        credentials['authenticated'] = false;
+    },
+    /**
+     * Get credentials for active user.
+     * Credentials contains email, username, lint to picture and cookies.
+     * You can save this data to authenticate on google without password next time (using cookies).
+     */
+    get credentials() {
+        return credentials;
+    },
+    /**
+     * If you set credentials before call authentication, you can skip most of authentication steps.
+     * Cookies from credentials data will be used to verify user identity on google servers.
+     */
+    set credentials(value) {
+        credentials = value;
     },
     /**
      * Load location data for authenticated user (not only for other users).
      */
-    get ownerLocationData() {
-        return ownerLocationData;
+    get ownerLocation() {
+        return ownerLocation;
     },
     /**
-     * If true (default), last item in shared location data will be active user location (if it is known to google).
+     * If true (default), first item in location data will be active user location (if it is known to google).
      * If false, only shared location data for other users will be returned.
      */
-    set ownerLocationData(value) {
-        ownerLocationData = value;
+    set ownerLocation(value) {
+        ownerLocation = value;
     },
     /**
-     * Reset credentials (login and password).
+     * Reset account data.
      */
-    resetCredentials() {
-        googleAccountEmail = '';
-        googleAccountPassword = '';
+    resetAccount() {
+        credentials['email'] = '';
+        credentials['name'] = '';
+        credentials['picture'] = '';
     },
     /**
      * Reset authentication status (clear cookies and set authenticated to false).
+     * If you need cancel second step from 2FA, you can call this method to clear authentication data.
      */
     resetAuthentication() {
-        stageData = {
-            authenticated: false,
-            cookies: {}
-        };
+        credentials['authenticated'] = false;
+        credentials['cookies'] = {};
     },
     /**
-     * Reset location data.
+     * Reset last location data.
      */
     resetLocationData() {
         lastSharedLocation = null;
@@ -136,7 +157,7 @@ module.exports = {
      * Reset credentials (login and password), authentication (cookies) and last location data.
      */
     reset() {
-        this.resetCredentials();
+        this.resetAccount();
         this.resetAuthentication();
         this.resetLocationData();
     },
@@ -146,12 +167,6 @@ module.exports = {
      */
     async authenticate() {
         return new Promise((resolve, reject) => {
-            /* connectStage0().then(() => {
-                return connectStage1();
-            }, reject0 => {
-                reject(reject0);
-                return Promise.reject();
-            })*/
             connectStage1().then(() => {
                 return connectStage2();
             }, reject1 => {
@@ -173,6 +188,9 @@ module.exports = {
                 reject(reject4);
                 return Promise.reject();
             }).then((data) => {
+                if (data['authenticated']) {
+                    googlePassword = '';
+                }
                 return resolve(data['authenticated']);
             }, reject5 => {
                 reject(reject5);
@@ -186,15 +204,13 @@ module.exports = {
      */
     async getLocations() {
         return new Promise((resolve, reject) => {
-            this.authenticate().then(
-                    loggedIn => {
-                        if (!loggedIn) {
-                            reject('Not authenticated');
-                            return Promise.reject();
-                        }
-                        return getSharedLocations();
+            this.authenticate().then(loggedIn => {
+                    if (!loggedIn) {
+                        reject('Not authenticated');
+                        return Promise.reject();
                     }
-                )
+                    return getSharedLocations();
+                })
                 .then(data => {
                     lastSharedLocation = data;
                     return resolve(data);
@@ -209,13 +225,13 @@ module.exports = {
 /**
  * Compose cokies object for the header.
  */
-function getCookie() {
-    if (!stageData['cookies']) {
+function getCookies() {
+    if (!credentials['cookies']) {
         return {};
     }
     let cookieStr = '';
-    for (var cookie in stageData['cookies']) {
-        cookieStr += cookie + '=' + stageData['cookies'][cookie] + ';'
+    for (var cookie in credentials['cookies']) {
+        cookieStr += cookie + '=' + credentials['cookies'][cookie] + ';'
     }
     return {
         "Cookie": cookieStr.slice(0, -1)
@@ -225,9 +241,9 @@ function getCookie() {
 /**
  * Save cookies as key value.
  */
-function setCookie(cookies, clearFirst = false) {
+function setCookies(cookies, clearFirst = false) {
     if (clearFirst) {
-        stageData['cookies'] = {};
+        credentials['cookies'] = {};
     }
     if (!cookies) {
         return;
@@ -237,7 +253,7 @@ function setCookie(cookies, clearFirst = false) {
             key,
             value,
         ] = cookie.split(';')[0].split('=');
-        stageData['cookies'][key] = value;
+        credentials['cookies'][key] = value;
     });
 }
 
@@ -245,49 +261,8 @@ function setCookie(cookies, clearFirst = false) {
  * Check if cookie is defined.
  */
 function checkCookie(cookieKey) {
-    return stageData['cookies'][cookieKey] !== undefined;
+    return credentials['cookies'][cookieKey] !== undefined;
 }
-
-/**
- * Verification step.
- * If cookies on input are valid, no redirect will be in response
- */
-/*
-function connectStage0(skipIfAuthenticated = true) {
-    const stage = 'stage 0';
-    if (stageData['authenticated'] && skipIfAuthenticated) {
-        return Promise.resolve(stageData);
-    }
-    if (Object.keys(stageData['cookies']).length === 0) {
-        stageData['authenticated'] = false;
-        return Promise.resolve(stageData);
-    }
-    return new Promise((resolve, reject) => {
-        request({
-            url: stageData['url'] || "https://myaccount.google.com/general-light",
-            headers: {
-                ...getCookie()
-            },
-            method: "GET",
-            followRedirect: false
-        }, function (err, response, body) {
-            if (err) {
-                if (showStage) {
-                    console.warn(err, stage + ' request/response error');
-                }
-                return reject(new Error('Wrong check url'));
-            }
-            if (response.statusCode === 302) {
-                stageData['url'] = response['headers']['location'];
-                return connectStage0().then(data => resolve(data));
-            }
-            // If not redirect, user is authenticated
-            stageData['authenticated'] = response.statusCode === 200;
-            return resolve(stageData);
-        });
-    });
-}
-*/
 
 /**
  * Open intial page and get GAPS cookie.
@@ -295,15 +270,14 @@ function connectStage0(skipIfAuthenticated = true) {
  */
 function connectStage1() {
     const stage = 'stage 1';
-    if (stageData['authenticated']) {
-        return Promise.resolve(stageData);
+    if (credentials['authenticated'] || stageData['twoFactorConfirmation']) {
+        return Promise.resolve(credentials);
     }
     return new Promise((resolve, reject) => {
-        // first get GAPS cookie
         request({
             url: "https://accounts.google.com/ServiceLogin",
             headers: {
-                ...getCookie(),
+                ...getCookies(),
                 "Upgrade-Insecure-Requeste": "1",
                 "Connection": "keep-alive"
             },
@@ -323,8 +297,8 @@ function connectStage1() {
                 return reject(new Error('Request error'));
             }
             if (response.statusCode === 302 && checkCookie('SID')) {
-                stageData['authenticated'] = true;
-                return resolve(stageData);
+                credentials['authenticated'] = true;
+                return resolve(credentials);
             }
             if (response.statusCode !== 200) {
                 if (showStage) {
@@ -333,7 +307,7 @@ function connectStage1() {
                 return reject(new Error('Response not OK'));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                setCookie(response.headers['set-cookie'], true);
+                setCookies(response.headers['set-cookie'], true);
             } else {
                 if (showStage) {
                     console.warn(response.headers, stage + ' missing set-cookie header');
@@ -357,7 +331,7 @@ function connectStage1() {
                 return reject(new Error('Missing login form'));
             }
             stageData['form'] = googleEmailForm;
-            return resolve(stageData);
+            return resolve(credentials);
         });
     });
 }
@@ -368,8 +342,8 @@ function connectStage1() {
  */
 function connectStage2() {
     const stage = 'stage 2';
-    if (stageData['authenticated']) {
-        return Promise.resolve(stageData);
+    if (credentials['authenticated'] || stageData['twoFactorConfirmation']) {
+        return Promise.resolve(credentials);
     }
     if (!stageData['form']) {
         if (showStage) {
@@ -377,18 +351,19 @@ function connectStage2() {
         }
         return Promise.reject(new Error('Missing form'));
     }
-    stageData['form']['Email'] = googleAccountEmail;
+    stageData['form']['Email'] = credentials['email'];
     return new Promise((resolve, reject) => {
         request({
             url: "https://accounts.google.com/signin/v1/lookup",
             headers: {
-                ...getCookie(),
+                ...getCookies(),
                 "Referer": "https://accounts.google.com/ServiceLogin?rip=1&nojavascript=1",
                 "Origin": "https://accounts.google.com"
             },
             method: "POST",
             form: stageData['form']
         }, function (err, response, body) {
+            delete stageData['form'];
             if (err || !response) {
                 if (showStage) {
                     console.warn(err, stage + ' request/response error');
@@ -396,7 +371,7 @@ function connectStage2() {
                 return reject(new Error('Request error'));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                setCookie(response.headers['set-cookie']);
+                setCookies(response.headers['set-cookie']);
             } else {
                 if (showStage) {
                     console.warn(response.headers, stage + ' missing set-cookie header');
@@ -416,7 +391,7 @@ function connectStage2() {
                     [x.name]: x.value,
                 }), {});
             stageData['form'] = googlePasswordForm;
-            return resolve(stageData);
+            return resolve(credentials);
         });
     });
 }
@@ -427,8 +402,8 @@ function connectStage2() {
  */
 function connectStage3() {
     const stage = 'stage 3';
-    if (stageData['authenticated']) {
-        return Promise.resolve(stageData);
+    if (credentials['authenticated'] || stageData['twoFactorConfirmation']) {
+        return Promise.resolve(credentials);
     }
     if (!stageData['form']) {
         if (showStage) {
@@ -436,18 +411,19 @@ function connectStage3() {
         }
         return Promise.reject(new Error('Missing form'));
     }
-    stageData['form']['Passwd'] = googleAccountPassword;
+    stageData['form']['Passwd'] = googlePassword;
     return new Promise((resolve, reject) => {
         request({
             url: "https://accounts.google.com/signin/challenge/sl/password",
             headers: {
-                ...getCookie(),
+                ...getCookies(),
                 "Referer": "https://accounts.google.com/signin/v1/lookup",
                 "Origin": "https://accounts.google.com"
             },
             method: "POST",
             form: stageData['form']
         }, function (err, response, body) {
+            delete stageData['form'];
             if (err || !response) {
                 if (showStage) {
                     console.warn(err, stage + ' request/response error');
@@ -463,10 +439,10 @@ function connectStage3() {
                 return reject(new Error('Error on webpage'));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                setCookie(response.headers['set-cookie']);
+                setCookies(response.headers['set-cookie']);
                 if (checkCookie('SID')) {
-                    stageData['authenticated'] = true;
-                    return resolve(stageData);
+                    credentials['authenticated'] = true;
+                    return resolve(credentials);
                 }
             }
             if (response.headers['location']) {
@@ -475,7 +451,7 @@ function connectStage3() {
                 }
                 stageData['url'] = response.headers['location'];
                 stageData['referer'] = response.request.href;
-                return resolve(stageData);
+                return resolve(credentials);
             }
             if (showStage) {
                 console.warn(response.headers, stage + ' missing set-cookie header or redirection');
@@ -493,8 +469,8 @@ function connectStage3() {
  */
 function connectStage4() {
     const stage = 'stage 4';
-    if (stageData['authenticated']) {
-        return Promise.resolve(stageData);
+    if (credentials['authenticated'] || stageData['twoFactorConfirmation']) {
+        return Promise.resolve(credentials);
     }
     if (!stageData['url'] || !stageData['referer']) {
         if (showStage) {
@@ -506,12 +482,14 @@ function connectStage4() {
         request({
             url: stageData['url'],
             headers: {
-                ...getCookie(),
+                ...getCookies(),
                 "Referer": stageData['referer'],
                 "Origin": "https://accounts.google.com"
             },
             method: "GET"
         }, function (err, response, body) {
+            delete stageData['url'];
+            delete stageData['referer'];
             if (err || !response) {
                 if (showStage) {
                     console.warn(err, stage + ' request/response error');
@@ -527,9 +505,10 @@ function connectStage4() {
                 return reject(new Error('Error on webpage'));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                setCookie(response.headers['set-cookie']);
+                setCookies(response.headers['set-cookie']);
                 if (checkCookie('SID')) {
-                    return resolve(true);
+                    credentials['authenticated'] = true;
+                    return resolve(credentials);
                 }
             }
             var challenge = undefined;
@@ -570,15 +549,14 @@ function connectStage4() {
                     if (showStage) {
                         console.warn(challenge, stage + ' waiting for verification by cell phone');
                     }
+                    stageData['action'] = (challenge.form['attribs']['action'] || '').startsWith('http') ?
+                        challenge.form['attribs']['action'] :
+                        'https://accounts.google.com' + (challenge.form['attribs']['action'] || '');
                     stageData['form'] = $(challenge.form).serializeArray()
                         .reduce((r, x) => Object.assign({}, r, {
                             [x.name]: x.value,
                         }), {});
-                    stageData['action'] = (challenge.form['attribs']['action'] || '').startsWith('http') ?
-                    challenge.form['attribs']['action'] :
-                    'https://accounts.google.com' + (challenge.form['attribs']['action'] || '');
                     stageData['twoFactorConfirmation'] = true;
-                    stageData['authenticated'] = true;
                     return reject(new Error('Cell phone verification'));
                 default:
                     return reject(new Error('Unsupported challenge'));
@@ -595,32 +573,33 @@ function connectStage5() {
     if (stageData['twoFactorConfirmation']) {
         delete stageData['twoFactorConfirmation'];
     } else {
-        return Promise.resolve(stageData);
+        return Promise.resolve(credentials);
     }
-
     if (!stageData['action'] || !stageData['form']) {
         if (showStage) {
-            console.warn(nextSubmitForm, stage + ' missing form');
+            console.warn(stageData, stage + ' missing form');
         }
-        stageData['authenticated'] = false;
+        credentials['authenticated'] = false;
         return Promise.reject(new Error('Nothing to follow'));
     }
     return new Promise((resolve, reject) => {
         request({
             url: stageData['action'],
             headers: {
-                ...getCookie(),
+                ...getCookies(),
                 "Referer": "https://accounts.google.com/signin/challenge/sl/password",
                 "Origin": "https://accounts.google.com"
             },
             method: "POST",
             form: stageData['form']
         }, function (err, response, body) {
+            delete stageData['action'];
+            delete stageData['form'];
             if (err || !response) {
                 if (showStage) {
                     console.warn(err, stage + ' request/response error');
                 }
-                stageData['authenticated'] = false;
+                credentials['authenticated'] = false;
                 return reject(new Error('Request error'));
             }
             const $ = cheerio.load(response.body);
@@ -629,30 +608,33 @@ function connectStage5() {
                 if (showStage) {
                     console.warn(error, stage + ' error message on webpage');
                 }
-                stageData['authenticated'] = false;
+                credentials['authenticated'] = false;
                 return reject(new Error('Error on webpage'));
             }
             if (response.hasOwnProperty('headers') && response.headers.hasOwnProperty('set-cookie')) {
-                setCookie(response.headers['set-cookie']);
+                setCookies(response.headers['set-cookie']);
             } else {
                 if (showStage) {
                     console.warn(response.headers, stage + ' missing set-cookie header');
                 }
-                stageData['authenticated'] = false;
+                credentials['authenticated'] = false;
                 return reject(new Error('No cookies'));
             }
-            stageData['authenticated'] = checkCookie('SID');
-            return resolve(stageData);
+            credentials['authenticated'] = checkCookie('SID');
+            return resolve(credentials);
         });
     })
 }
 
+/**
+ * Return shared location from google map for authenticated user.
+ */
 function getSharedLocations() {
     return new Promise((resolve, reject) => {
         request({
             url: "https://www.google.com/maps/preview/locationsharing/read",
             headers: {
-                ...getCookie()
+                ...getCookies()
             },
             method: "GET",
             qs: {
@@ -680,6 +662,7 @@ function getSharedLocations() {
                 "lng": data[1] && data[1][1][1],
                 "locationname": data[1] && data[1][4],
                 "photoURL": data[0][1],
+                "battery": data[13] && data[13][1] || null,
                 "lastupdateepoch": data[1] && data[1][2],
                 "lastupdate": data[1] && new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0, 10)))
             }));
@@ -693,6 +676,7 @@ function getSharedLocations() {
                 "lng": locationData[9] && locationData[9][1] && locationData[9][1][1] && locationData[9][1][1][1],
                 "locationname": locationData[9] && locationData[9][1] && locationData[9][1][4],
                 "photoURL": '',
+                "battery": null,
                 "lastupdateepoch": locationData[8],
                 "lastupdate": locationData[8] && new Date(new Date(0).setUTCSeconds(locationData[8].toString().substring(0, 10)))
             };
