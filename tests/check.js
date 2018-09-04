@@ -22,7 +22,8 @@ async function check() {
   const help = parameters.indexOf(' --help ') >= 0 || process.argv.length === 0;
 
   if (help) {
-    console.log('Script to check node-google-shared-locations module.\n');
+    console.log('Script to check node-google-shared-locations module.');
+    console.log('This script first authenticates the user, then downloads the location data, and then downloads the location data without re-authentication, using only cookies..');
     console.log('Usage:');
     console.log('  # One time check of locations for selected account and password');
     console.log('    node check.js <googleAccountEmail> <googleAccountPassword>');
@@ -38,6 +39,7 @@ async function check() {
     console.log('  --save        Save user credentials (user account name and cookies).');
     console.log('  --clear       Clear saved data for selected user account.');
     console.log('  --clear-all   Clear all cookies.');
+    console.log('  --one         Only one fetch for location data.');
     console.log('  --debug       Log with step informations on errors.');
     return;
   }

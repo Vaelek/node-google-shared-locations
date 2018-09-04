@@ -72,11 +72,17 @@ module.exports = {
     set googleEmail(value) {
         credentials['email'] = value;
     },
+    get googleEmail() {
+        throw (new Error('Unauthorized'));
+    },
     /**
      * Set Google account password.
      */
     set googlePassword(value) {
         googlePassword = value;
+    },
+    get googlePassword() {
+        throw (new Error('Unauthorized'));
     },
     /**
      * Get last detected shared location from google map.

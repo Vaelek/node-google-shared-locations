@@ -12,21 +12,41 @@ beforeAll(() => {
   } catch (e) {}
 });
 
-test('has default empty credentials', () => {
-  expect(gsl.credentials.username).toBe('');
-  expect(gsl.credentials.password).toBe('');
+test('googleEmail can not be read', () => {
+  expect(() => {
+    return gsl.googleEmail === '';
+  }).toThrow();
 });
 
-test('bad account login should end with an error in the stage 2', async () => {
-  gsl.credentials = {
-    username: 'wrong@email',
-    password: 'wrongPassword'
-  }
+test('googlePassword can not be read', () => {
+  expect(() => {
+    return gsl.googlePassword === '';
+  }).toThrow();
+});
+
+test('is not authenticated by default', () => {
+  expect(gsl.authenticated).toBeFalsy();
+});
+
+test('bad account login should end with "Error on webpage"', async () => {
+  gsl.googleEmail = 'wrong@gmail.com';
+  gsl.googlePassword = 'wrongPassword';
   expect.assertions(1);
   try {
     await gsl.authenticate();
   } catch (e) {
-    expect(e.message).toMatch(/Stage 2 data error:.*/);
+    expect(e.message).toMatch('Error on webpage');
+  }
+});
+
+test('bad account password should end with "Error on webpage"', async () => {
+  gsl.googleEmail = credentials.username;
+  gsl.googlePassword = 'wrongPassword';
+  expect.assertions(1);
+  try {
+    await gsl.authenticate();
+  } catch (e) {
+    expect(e.message).toMatch('Error on webpage');
   }
 });
 
