@@ -15,22 +15,21 @@ or
 Minimal example of usage (_asynchronous call using Promise_):
 
 ```js
-const googleSharedLocations = require('google-location-sharing');
+const gls = require('google-location-sharing');
 
-googleSharedLocations.googleEmail = 'googleAccountEmail@gmail.com';
-googleSharedLocations.googlePassword = 'googleAccountPassword';
+gls.googleEmail = 'googleAccountEmail@gmail.com';
+gls.googlePassword = 'googleAccountPassword';
 
-googleSharedLocations.getLocations()
+gls.getLocations()
     .then(result => {
         console.log(result);
     })
-
     .catch(err => {
         console.log(`There was an error! ${err}`);
     });
 ```
 
-Usage in a synchronous process: `locations = await googleSharedLocations.getLocations();`.
+Usage in a synchronous process: `locations = await gls.getLocations();`
 
 _For a complete example of how to use this library, save and re-load cookies, see file `check.js` in the `tests` directory._
 
@@ -43,7 +42,7 @@ Array of objects with localization data.
   id: "5481211564887755445",
   name: "Bob Jones",
   shortname: "Bob",
-  visible: true,                 // if user is visible on google maps
+  visible: true,                 // whether this user is displayed on google maps
   lat: 40.682825,                // latitude: north–south position
   lng: -73.93883,                // longitude: east–west position
   locationname: "Brooklyn, NY 11206, USA",
@@ -68,20 +67,21 @@ Array of objects with localization data.
 
 **Supported only with 'Cell phone verification'** (not google authenticator).
 
-If 2FA is detected, this code return error `'Cell phone verification'`. Then you get confirmation on your phone. After google ask you if you want to allow a new account login and you agree with that, you can call `googleSharedLocations.getLocations()` again and the code will continue running with the original credentials set in previous step. For full example see `check.js` file in `tests\` directory.
+If 2FA is detected, this code return error `'Cell phone verification'`.  
+Then you get confirmation on your phone. After google ask you if you want to allow a new account login and you agree with that, you can call `gls.getLocations()` again and the code will continue running with the original credentials set in previous step. For full example see `check.js` file in `tests\` directory.
 
-### Detection of account owner location
+### Owner location
 
-Google default returns the location of the people who share it with the account owner. Location of account owner is not set in the same part of location file. Extract from this file **does not contain information about the account owner**. You can customize this owner informations and set it to output array before call `googleSharedLocations.getLocations()` like this:
+Google default returns the location of the people who share it with the account owner. Location of **account owner** is not set in the same part of location file. Extract from this file **does not contain information about the account owner**. You can customize this owner informations and set it to output array before call `gls.getLocations()` like this:
 
 ```javascript
-googleSharedLocations.ownerId = '0123456789';
-googleSharedLocations.ownerName = 'John Doe';
-googleSharedLocations.ownerShortname = 'John';
-googleSharedLocations.ownerPhotoUrl = 'http://images-for-google-users.com/0123456789.jpg';
+gls.ownerId = '0123456789';
+gls.ownerName = 'John Doe';
+gls.ownerShortname = 'John';
+gls.ownerPhotoUrl = 'http://images-for-google-users.com/0123456789.jpg';
 ```
 
-These data become part of credentials, so if you store credentials from `googleSharedLocations.credentials` like (see example in `check.js` file) `storage.setItem('credentials_storage_key', googleSharedLocations.credentials)` you can load it by `googleSharedLocations.credentials = credentials;` then with all data for account owner.
+These data become part of credentials, so if you store credentials from `gls.credentials` like (see example in `check.js` file) `storage.setItem('credentials_storage_key', gls.credentials)` you can load it by `gls.credentials = credentials;` then with all data for account owner.
 
 ### Notes
 
@@ -91,7 +91,7 @@ You can save and load cookies in your own code to be persistent, an example of h
 
 #### Links
 
-Based on [ioBroker.google-sharedlocation](<https://github.com/t4qjXH8N/ioBroker.google-sharedlocation>) | [Your location sharing link](<https://myaccount.google.com/locationsharing>)
+Based on [ioBroker.google-sharedlocation](<https://github.com/t4qjXH8N/ioBroker.google-sharedlocation>) | [Your location sharing](<https://myaccount.google.com/locationsharing>) for Google maps
 
 ## Testing
 
@@ -112,6 +112,6 @@ This command runs authentication, to obtain shared location. It returns time log
 ### 2.0 breaking changes
 
 - Code is full async.
-- Output attributes clean up. New `battery` (battery status of device which share location) and `visible` (if user shared location is not too old and it should be displayed on Google map) attributes. Removed `lastupdate`, `latitude`, `long` and `longitude` (duplicates). You can calculate original `lastupdate` from `lastupdateepoch` by calling `new Date(lastupdateepoch)` or `new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0,10)))`.
+- Output attributes clean up. New `battery` (battery status of device which share location) and `visible` (if user shared location is not too old and it should be displayed on Google maps) attributes. Removed `lastupdate`, `latitude`, `long` and `longitude` (duplicates). You can calculate original `lastupdate` from `lastupdateepoch` by calling `new Date(lastupdateepoch)` or `new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0,10)))`.
 - Updated for 2FA. After confirmation on your phone you can continue and get shared location data. See more in [2FA section](#2FA).
 - Credentials object modification. Password for google account is write only.
