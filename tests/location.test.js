@@ -12,15 +12,10 @@ beforeAll(() => {
   } catch (e) {}
 });
 
-test('get shared location without authentication return reject "Not authenticated"', async () => {
-  gsl.AUTHENTICATED = false;
-  expect.assertions(1);
-  try {
-    gsl.getLocations().then().catch(error => {
-      console.log(error, 'getLocations Error');
-    })
-    // expect(gsl.lastSharedLocation).toBeNull();
-  } catch (e) {
-    console.log(e);
-  }
+test('get shared location return object', async () => {
+  gsl.googleEmail = credentials.username;
+  gsl.googlePassword = credentials.password;
+  data = await gsl.getLocations();
+  expect(data).toBeDefined();
+  expect(data != null).toBeTruthy();
 });
