@@ -107,8 +107,12 @@ async function check() {
     }
   }
 
+  // enable debugging
   gsl.debug = debug;
+  // alow request each 1 second
+  gsl.minimalRequestTimeInterval = 1;
   console.time('Running time');
+  // get location
   gsl.getLocations().then(result => {
     return Promise.resolve(result);
   }).catch(error => {
