@@ -32,17 +32,22 @@ const challengesMap = [{
 }];
 
 let showStage = false;
-let ownerLocation = true;
+let showOwnerLocation = true;
 
 let googlePassword = '';
 let stageData = {};
 
+let minimalRequestTimeInterval = 60;
 let lastSharedLocation = null;
+let nextRequestAfter = null;
+
 let credentials = {
     email: '',
     authenticated: false,
-    name: '',
-    picture: '',
+    ownerId: '',
+    ownerName: '',
+    ownerShortname: '',
+    ownerPhotoUrl: '',
     cookies: {}
 };
 
@@ -110,6 +115,54 @@ module.exports = {
         credentials['authenticated'] = false;
     },
     /**
+     * Get owner id
+     */
+    get ownerId() {
+        return credentials['ownerId'];
+    },
+    /**
+     * Set owner Id (it is not possible to detect it form location file)
+     */
+    set ownerId(value) {
+        credentials['ownerId'] = value;
+    },
+    /**
+     * Get owner name
+     */
+    get ownerName() {
+        return credentials['ownerName'];
+    },
+    /**
+     * Set owner name (it is not possible to detect it form location file)
+     */
+    set ownerName(value) {
+        credentials['ownerName'] = value;
+    },
+    /**
+     * Get owner shortname
+     */
+    get ownerShortname() {
+        return credentials['ownerShortname'];
+    },
+    /**
+     * Set owner shortname (it is not possible to detect it form location file)
+     */
+    set ownerShortname(value) {
+        credentials['ownerShortname'] = value;
+    },
+    /**
+     * Get owner photo url
+     */
+    get ownerPhotoUrl() {
+        return credentials['ownerPhotoUrl'];
+    },
+    /**
+     * Set owner photo url (it is not possible to detect it form location file)
+     */
+    set ownerPhotoUrl(value) {
+        credentials['ownerPhotoUrl'] = value;
+    },
+    /**
      * Get credentials for active user.
      * Credentials contains email, username, lint to picture and cookies.
      * You can save this data to authenticate on google without password next time (using cookies).
@@ -125,25 +178,47 @@ module.exports = {
         credentials = value;
     },
     /**
+     * Requests should not be too frequent.
+     * The time interval between each request are set to this minimum value in seconds (default 60).
+     * If the request for location is call in shortest time, then the last stored location data is returned.
+     */
+    get minimalRequestTimeInterval() {
+        return minimalRequestTimeInterval;
+    },
+    /**
+     * Set minimal interval for location request to google maps.
+     */
+    set minimalRequestTimeInterval(value) {
+        minimalRequestTimeInterval = value;
+    },
+    /**
+     * The earliest time when a new value can be requested from google maps and returned as new result.
+     */
+    get nextRequestAfter() {
+        return nextRequestAfter || new Date();
+    },
+    /**
      * Load location data for authenticated user (not only for other users).
      */
-    get ownerLocation() {
-        return ownerLocation;
+    get showOwnerLocation() {
+        return showOwnerLocation;
     },
     /**
      * If true (default), first item in location data will be active user location (if it is known to google).
      * If false, only shared location data for other users will be returned.
      */
-    set ownerLocation(value) {
-        ownerLocation = value;
+    set showOwnerLocation(value) {
+        showOwnerLocation = value;
     },
     /**
      * Reset account data.
      */
     resetAccount() {
         credentials['email'] = '';
-        credentials['name'] = '';
-        credentials['picture'] = '';
+        credentials['ownerId'] = '';
+        credentials['ownerName'] = '';
+        credentials['ownerShortname'] = '';
+        credentials['ownerPhotoUrl'] = '';
     },
     /**
      * Reset authentication status (clear cookies and set authenticated to false).
@@ -209,6 +284,9 @@ module.exports = {
      * Try to authenicate if is not authenticated already.
      */
     async getLocations() {
+        if (lastSharedLocation && nextRequestAfter && nextRequestAfter > new Date()) {
+            return Promise.resolve(lastSharedLocation);
+        }
         return new Promise((resolve, reject) => {
             this.authenticate().then(loggedIn => {
                     if (!loggedIn) {
@@ -636,6 +714,8 @@ function connectStage5() {
  * Return shared location from google map for authenticated user.
  */
 function getSharedLocations() {
+    const requestTime = new Date();
+    nextRequestAfter = new Date(requestTime.getTime() + minimalRequestTimeInterval * 1000)
     return new Promise((resolve, reject) => {
         request({
             url: "https://www.google.com/maps/preview/locationsharing/read",
@@ -669,25 +749,25 @@ function getSharedLocations() {
                 "locationname": data[1] && data[1][4],
                 "photoURL": data[0][1],
                 "battery": data[13] && data[13][1] || null,
-                "lastupdateepoch": data[1] && data[1][2],
-                "lastupdate": data[1] && new Date(new Date(0).setUTCSeconds(data[1][2].toString().substring(0, 10)))
+                "lastupdateepoch": data[1] && data[1][2]
             }));
-            // main user location data
-            const activeUserData = locationData[9] && {
-                "id": 0,
-                "name": '',
-                "shortname": '',
-                "visible": locationData[8] != null,
-                "lat": locationData[9] && locationData[9][1] && locationData[9][1][1] && locationData[9][1][1][2],
-                "lng": locationData[9] && locationData[9][1] && locationData[9][1][1] && locationData[9][1][1][1],
-                "locationname": locationData[9] && locationData[9][1] && locationData[9][1][4],
-                "photoURL": '',
-                "battery": null,
-                "lastupdateepoch": locationData[8],
-                "lastupdate": locationData[8] && new Date(new Date(0).setUTCSeconds(locationData[8].toString().substring(0, 10)))
-            };
-            if (activeUserData) {
-                users.push(activeUserData);
+            // google account owner location data
+            if (showOwnerLocation) {
+                const activeUserData = locationData[9] && {
+                    "id": credentials['ownerId'] || '0',
+                    "name": credentials['ownerName'],
+                    "shortname": credentials['ownerShortname'],
+                    "visible": locationData[8] != null,
+                    "lat": locationData[9] && locationData[9][1] && locationData[9][1][1] && locationData[9][1][1][2],
+                    "lng": locationData[9] && locationData[9][1] && locationData[9][1][1] && locationData[9][1][1][1],
+                    "locationname": locationData[9] && locationData[9][1] && locationData[9][1][4],
+                    "photoURL": credentials['ownerPhotoUrl'],
+                    "battery": undefined,
+                    "lastupdateepoch": locationData[8]
+                };
+                if (activeUserData) {
+                    users.push(activeUserData);
+                }
             }
 
             if (users.length > 0)
