@@ -1,0 +1,17 @@
+# node
+node_modules
+.node-persist
+npm-debug.log
+package-lock.json
+
+# temporary
+/temp/*
+.history
+
+# editor
+.vscode
+.idea
+coverage
+
+# testing
+credentials.json
